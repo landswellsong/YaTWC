@@ -72,6 +72,13 @@ void listcams()
             }
             printf("Webcam detected: %s at %s, driver: %s\n", caps.card, namebuf, caps.driver);
             
+            if ( (caps.capabilities & (V4L2_CAP_VIDEO_CAPTURE|V4L2_CAP_VIDEO_CAPTURE_MPLANE)) == 0 )
+                printf("\tWebcam does not support video capture.");
+            else
+            {
+            }
+
+            
             deviceopen:
             if ( close(fd) == -1 )
                 printf("Error closing %s.\n", namebuf);
