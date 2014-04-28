@@ -8,6 +8,8 @@
 #include <string.h>             /* for memset() */
 #include <stdlib.h>
 #include <errno.h>
+#include <assert.h>
+#include <stdio.h>              /* Temporarily */
 
 /* Check that the camera device exists and is a-priori usable for us */
 int checkcam(const char *path)
@@ -48,12 +50,40 @@ int closecam(int fd)
     return close(fd);
 }
 
+/* Convert the image from YUV422 to RGB888 format */
+int clamp(int n)
+{
+    n=n>255? 255 : n;
+    return n<0 ? 0 : n;
+}
+    
+void convertimage(unsigned char *inbuf, unsigned char *outbuf, size_t insize)
+{
+    size_t i;
+    
+    for (i=0; i<insize/4; i++)
+    {
+        int y1=     inbuf[i*4+0]<<8;
+        int u=      inbuf[i*4+1]-128;
+        int y2=     inbuf[i*4+2]<<8;
+        int v=      inbuf[i*4+3]-128;
+                      
+        /*R*/outbuf[i*6+0]=clamp((y1 + (359 * v)) >> 8);
+        /*G*/outbuf[i*6+1]=clamp((y1 - (88 * u) - (183 * v)) >> 8);
+        /*B*/outbuf[i*6+2]=clamp((y1 + (454 * u)) >> 8);
+        
+        /*R*/outbuf[i*6+3]=clamp((y2 + (359 * v)) >> 8);
+        /*G*/outbuf[i*6+4]=clamp((y2 - (88 * u) - (183 * v)) >> 8);
+        /*B*/outbuf[i*6+5]=clamp((y2 + (454 * u)) >> 8);
+    }
+}
+
 /* TODO: deal with errno */
 void listcams()
 {
-    int i,fd;
+    int i, fd;
     
-    for (i=0;i<256;i++)
+    for (i=0; i<256; i++)
     {
         char namebuf[64];
         sprintf(namebuf,"/dev/video%d",i);
@@ -91,7 +121,9 @@ void listcams()
                 /* TODO: evaluate mmap */
                 /* Actual buffers */
                 size_t buflen;
-                void *databuf;
+                size_t rgblen;
+                unsigned char *databuf;
+                unsigned char *rgbbuf;
                 struct v4l2_requestbuffers reqbuf;
                 struct v4l2_format fmt;
                 struct v4l2_buffer buf;
@@ -109,7 +141,9 @@ void listcams()
                 
                 /* Allocating the buffer */
                 buflen=fmt.fmt.pix.sizeimage;
-                databuf=(void*)malloc(buflen);
+                rgblen=6*buflen/4;
+                databuf=malloc(buflen);
+                rgbbuf=malloc(sizeof(unsigned char)*rgblen); /* TODO: use uint8_t explicitly */
                 
                 /* Requesting the buffer through a user pointer */
                 memset(&reqbuf, 0, sizeof (reqbuf));
@@ -154,8 +188,14 @@ void listcams()
                     printf("Can not retrieve the buffer on %s.\n", namebuf);
                     goto buffersallocated;
                 }
-                /* TODO: check if pointers match */
+                assert(buf.m.userptr == (unsigned long)databuf);
                 printf("Received a %d byte image.\n", buf.bytesused);
+                
+                /* Converting image to RGB888 and outputting it into a file */
+                convertimage(databuf, rgbbuf, buflen);
+                FILE *fp=fopen("rgbimage.data","w"); /* WARNING no checks, it's temporary code */
+                fwrite(rgbbuf, sizeof(char unsigned), rgblen, fp);
+                fclose(fp);
                 
                 /* Binding the buffer back */
                 if ( ioctl(fd, VIDIOC_QBUF, &buf) == -1 )
