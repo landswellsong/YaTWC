@@ -134,7 +134,6 @@ void listcams()
                 if ( ioctl(fd, VIDIOC_QBUF, &buf) == -1 )
                 {
                     printf("Can not bind the buffer on %s.\n", namebuf);
-                    perror("");
                     goto buffersallocated;
                 }
                 
@@ -142,6 +141,26 @@ void listcams()
                 if ( ioctl(fd, VIDIOC_STREAMON, &fmt.type) == -1 )
                 {
                     printf("Can not start the stream on %s.\n", namebuf);
+                    goto buffersallocated;
+                }
+                
+                /* Reading a frame out */
+                memset(&buf, 0, sizeof(buf));
+                buf.type=V4L2_BUF_TYPE_VIDEO_CAPTURE;
+                buf.memory=V4L2_MEMORY_USERPTR;
+                
+                if ( ioctl(fd, VIDIOC_DQBUF, &buf) == -1 )
+                {
+                    printf("Can not retrieve the buffer on %s.\n", namebuf);
+                    goto buffersallocated;
+                }
+                /* TODO: check if pointers match */
+                printf("Received a %d byte image.\n", buf.bytesused);
+                
+                /* Binding the buffer back */
+                if ( ioctl(fd, VIDIOC_QBUF, &buf) == -1 )
+                {
+                    printf("Can not bind the buffer on %s.\n", namebuf);
                     goto buffersallocated;
                 }
                 
